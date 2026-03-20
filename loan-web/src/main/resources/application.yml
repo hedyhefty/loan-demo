@@ -1,0 +1,7 @@
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl # 开发环境建议开启，看 SQL 运行情况
+    map-underscore-to-camel-case: true # 自动下划线转驼峰
+  global-config:
+    db-config:
+      id-type: auto # 主键自增策略
