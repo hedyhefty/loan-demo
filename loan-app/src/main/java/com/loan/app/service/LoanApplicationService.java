@@ -1,6 +1,7 @@
 package com.loan.app.service;
 
 import com.loan.app.dto.LoanApplyDTO;
+import com.loan.app.exception.BizException;
 import com.loan.domain.order.entity.LoanOrder;
 import com.loan.domain.order.repository.LoanOrderRepository;
 import com.loan.infra.common.redis.RedisLimitManager;
@@ -33,7 +34,7 @@ public class LoanApplicationService {
 
         if (!acquired) {
             log.warn("用户额度不足: userId={}", dto.getUserId());
-            throw new RuntimeException("申请失败：可用额度不足");
+            throw new BizException("申请失败：可用额度不足");
         }
 
         try {
@@ -59,7 +60,7 @@ public class LoanApplicationService {
             // 5. 异常补偿：释放 Redis 额度
             log.error("系统异常导致订单写入失败，执行 Redis 额度释放: {}", dto.getOrderNo());
             redisLimitManager.releaseLimit(dto.getUserId(), dto.getAmount());
-            throw new RuntimeException("系统繁忙，请稍后再试", e);
+            throw new BizException(500, "系统繁忙，请稍后再试");
         }
     }
 }
