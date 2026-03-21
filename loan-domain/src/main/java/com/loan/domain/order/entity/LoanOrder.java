@@ -46,7 +46,20 @@ public class LoanOrder {
     }
 
     /**
-     * 这种写法叫“充血模型”，业务逻辑跟着数据走，
+     * 静态工厂方法：创建借款订单
+     */
+    public static LoanOrder create(Long userId, Double amount, String orderNo) {
+        return LoanOrder.builder()
+                .orderNo(orderNo)
+                .userId(userId)
+                .amount(BigDecimal.valueOf(amount))
+                .status(OrderStatus.INIT)
+                .version(0L)
+                .build();
+    }
+
+    /**
+     * 这种写法叫”充血模型”，业务逻辑跟着数据走，
      * 而不是在 Service 里写一堆 if-else。
      */
 }

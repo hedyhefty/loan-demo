@@ -23,5 +23,10 @@
             <artifactId>loan-domain</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.loan</groupId>
+            <artifactId>loan-infra</artifactId>
+            <version>${project.version}</version>
+        </dependency>
     </dependencies>
 </project>

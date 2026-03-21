@@ -13,6 +13,7 @@ public class RedisLimitManager {
 
     private final StringRedisTemplate redisTemplate;
     private DefaultRedisScript<Long> limitScript;
+    private DefaultRedisScript<Long> releaseScript;
 
     public RedisLimitManager(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
@@ -23,11 +24,14 @@ public class RedisLimitManager {
         limitScript = new DefaultRedisScript<>();
         limitScript.setResultType(Long.class);
         limitScript.setScriptSource(new ResourceScriptSource(new ClassPathResource("scripts/limit_check.lua")));
+
+        releaseScript = new DefaultRedisScript<>();
+        releaseScript.setResultType(Long.class);
+        releaseScript.setScriptSource(new ResourceScriptSource(new ClassPathResource("scripts/limit_release.lua")));
     }
 
     public boolean tryAcquireLimit(Long userId, double amount, double maxLimit) {
         String key = "loan:limit:user:" + userId;
-        // 执行 Lua 脚本
         Long result = redisTemplate.execute(
                 limitScript,
                 Collections.singletonList(key),
@@ -35,5 +39,14 @@ public class RedisLimitManager {
                 String.valueOf(maxLimit)
         );
         return result != null && result == 1;
+    }
+
+    public void releaseLimit(Long userId, double amount) {
+        String key = "loan:limit:user:" + userId;
+        redisTemplate.execute(
+                releaseScript,
+                Collections.singletonList(key),
+                String.valueOf(amount)
+        );
     }
 }
