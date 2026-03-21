@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.loan.domain.order.entity.LoanOrder;
 import com.loan.domain.order.enums.OrderStatus;
 import com.loan.domain.order.repository.LoanOrderRepository;
+import com.loan.infra.order.converter.OrderConverter;
 import com.loan.infra.order.mapper.LoanOrderMapper;
 import com.loan.infra.order.po.LoanOrderPO;
 import lombok.RequiredArgsConstructor;
@@ -15,15 +16,12 @@ public class LoanOrderRepositoryImpl implements LoanOrderRepository {
 
     private final LoanOrderMapper orderMapper;
 
+    private final OrderConverter orderConverter;
+
     @Override
     public void save(LoanOrder order) {
         // 1. 将 Domain 实体转为 PO (手动或用 MapStruct)
-        LoanOrderPO po = new LoanOrderPO();
-        po.setOrderNo(order.getOrderNo());
-        po.setUserId(order.getUserId());
-        po.setAmount(order.getAmount());
-        po.setStatus(order.getStatus().name());
-        po.setVersion(order.getVersion());
+        LoanOrderPO po = orderConverter.toPO(order);
 
         // 2. 执行插入
         orderMapper.insert(po);
@@ -59,14 +57,6 @@ public class LoanOrderRepositoryImpl implements LoanOrderRepository {
 
         // 2. 将 PO 还原为 Domain 实体（手动转换示例）
         // 在实际大型项目中，这里建议使用 MapStruct 自动生成转换代码
-        return LoanOrder.builder()
-                .id(po.getId())
-                .orderNo(po.getOrderNo())
-                .userId(po.getUserId())
-                .amount(po.getAmount())
-                .status(OrderStatus.valueOf(po.getStatus()))
-                .version(po.getVersion())
-                // 注意：由于 Domain 实体通常是充血模型，还原时要保持其业务一致性
-                .build();
+        return orderConverter.toDomain(po);
     }
 }
