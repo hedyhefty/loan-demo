@@ -16,6 +16,19 @@ spring:
     username: ${MYSQL_USERNAME}
     password: ${MYSQL_PASSWORD}
     driver-class-name: com.mysql.cj.jdbc.Driver
+    hikari:
+      pool-name: HikariPool-Loan-Service
+      # 1. 核心：最大连接数建议略大于并发线程数 (60 + 10个冗余)
+      maximum-pool-size: 70
+      # 2. 最小空闲连接
+      minimum-idle: 20
+      # 3. 等待连接的最长时间，金融业务不建议太长，设置 5-10s 即可
+      connection-timeout: 10000
+      # 4. 空闲连接存活时间
+      idle-timeout: 300000
+      # 5. 连接最长生命周期（建议比 MySQL 的 wait_timeout 小一点）
+      max-lifetime: 1800000
+      register-mbeans: true
   rabbitmq:
     host: ${RABBITMQ_HOST}
     port: ${RABBITMQ_PORT}
@@ -25,6 +38,12 @@ spring:
       observation-enabled: true
     listener:
       simple:
+        # --- 新增核心参数 ---
+        concurrency: 20          # 初始并发开启 20 个线程（车道）
+        max-concurrency: 50      # 根据积压情况，弹性扩展到 50 个线程
+        prefetch: 30             # 每个线程预取 30 条消息到内存，减少网络往返耗时
+        # -------------------
+        acknowledge-mode: manual # 金融业务建议手动确认，防止消息丢失
         retry:
           enabled: true
           max-attempts: 3
@@ -48,6 +67,16 @@ management:
   metrics:
     tags:
       application: ${spring.application.name}
+    distribution:
+      # 1. 核心：开启 HTTP 请求的直方图统计，否则查不到 _bucket 后缀的指标
+      percentiles-histogram:
+        http.server.requests: true
+      # 2. 可选：预设一些分位数（虽然 Prometheus 可以在查询时计算，但这里预设更准确）
+      percentiles:
+        http.server.requests: 0.5, 0.9, 0.95, 0.99
+      # 3. 设定耗时桶（Bucket），建议根据金融业务调整，比如超过 1s 的请求重点监控
+      slo:
+        http.server.requests: 50ms, 100ms, 200ms, 500ms, 1s, 2s
 
 # Resilience4j 熔断器配置
 resilience4j:
