@@ -1,6 +1,7 @@
 package com.loan.app.service;
 
 import com.loan.app.config.RabbitConfig;
+import com.loan.app.funding.FundingClient;
 import com.loan.app.outbox.OutboxScheduler;
 import com.loan.domain.order.entity.LoanOrder;
 import com.loan.domain.order.enums.OrderStatus;
@@ -45,6 +46,7 @@ public class LoanReconciliationService {
     private final OutboxScheduler outboxScheduler;
     private final RabbitTemplate rabbitTemplate;
     private final RedisLockManager redisLockManager;
+    private final FundingClient fundingClient;
 
     // ==================== 任务一：Outbox 消息补齐 ====================
 
@@ -145,23 +147,23 @@ public class LoanReconciliationService {
             triggerFunding(order);
 
         } else if (order.getStatus() == OrderStatus.PAYING) {
-            // 查询银行状态，这里模拟返回 SUCCESS
-            ExternalFundingStatus result = queryExternalFundingStatus(order.getOrderNo());
+            // 查询银行状态
+            FundingClient.FundingResult result = fundingClient.queryStatus(order.getOrderNo());
 
-            if (result == ExternalFundingStatus.SUCCESS) {
+            if (result == FundingClient.FundingResult.SUCCESS) {
                 int rows = orderRepository.updateStatusByOrderNo(
                         order.getOrderNo(), OrderStatus.PAYING, OrderStatus.SUCCESS);
                 if (rows > 0) {
                     log.info("【对账-业务】订单状态已同步为 SUCCESS: {}", order.getOrderNo());
                 }
-            } else if (result == ExternalFundingStatus.FAILED) {
+            } else if (result == FundingClient.FundingResult.FAILED) {
                 int rows = orderRepository.updateStatusByOrderNo(
                         order.getOrderNo(), OrderStatus.PAYING, OrderStatus.FAILED);
                 if (rows > 0) {
                     log.warn("【对账-业务】订单状态已回滚为 FAILED: {}", order.getOrderNo());
                 }
             }
-            // NOT_FOUND 继续等待下次对账
+            // PROCESSING 继续等待下次对账
         }
     }
 
@@ -176,23 +178,5 @@ public class LoanReconciliationService {
                 )
         );
         log.info("【对账-业务】已重新触发放款消息: orderNo={}", order.getOrderNo());
-    }
-
-    /**
-     * 模拟查询第三方银行放款状态。
-     * 实际项目中应注入真实的 FundingClient。
-     */
-    private ExternalFundingStatus queryExternalFundingStatus(String orderNo) {
-        // 模拟：永远返回 SUCCESS（压测环境下认为银行已处理）
-        return ExternalFundingStatus.SUCCESS;
-    }
-
-    /**
-     * 第三方放款状态枚举
-     */
-    private enum ExternalFundingStatus {
-        SUCCESS,   // 放款成功
-        FAILED,    // 放款失败
-        NOT_FOUND  // 银行侧未查到记录
     }
 }

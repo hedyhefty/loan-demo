@@ -45,6 +45,25 @@ management:
   zipkin:
     tracing:
       endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# Resilience4j 熔断器配置
+resilience4j:
+  circuitbreaker:
+    instances:
+      fundingService:
+        slidingWindowSize: 10
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        permittedNumberOfCallsInHalfOpenState: 3
+        minimumNumberOfCalls: 5
+  timelimiter:
+    instances:
+      fundingService:
+        timeoutDuration: 3s
+        cancelRunningFuture: true
 
 # 日志配置：显示 traceId 和 spanId
 logging:
@@ -61,3 +80,6 @@ mybatis-plus:
   global-config:
     db-config:
       id-type: auto
+      # 重点加这两行：如果字段是 null，就不出现在 SQL 语句中
+      insert-strategy: not_null
+      update-strategy: not_null
