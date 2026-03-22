@@ -1,6 +1,7 @@
 package com.loan.domain.user.repository;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public interface UserLimitRepository {
     /**
@@ -24,4 +25,10 @@ public interface UserLimitRepository {
      * @param amount 恢复金额
      */
     void restoreLimit(Long userId, BigDecimal amount);
+
+    /**
+     * 查询所有活跃用户ID（用于缓存预热）
+     * @return 活跃用户ID列表
+     */
+    List<Long> findAllActiveUserIds();
 }
