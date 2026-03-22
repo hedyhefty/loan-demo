@@ -19,6 +19,11 @@ public class RabbitConfig {
     public static final String DLX_QUEUE = "loan.dlx.queue";
     public static final String DLX_ROUTING_KEY = "loan.dlx.failed";
 
+    // 放款队列
+    public static final String FUNDING_EXCHANGE = "loan.order.exchange";
+    public static final String FUNDING_QUEUE = "loan.order.funding.queue";
+    public static final String FUNDING_ROUTING_KEY = "loan.order.approved";
+
     // 死信交换机
     @Bean
     public DirectExchange dlxExchange() {
@@ -56,6 +61,18 @@ public class RabbitConfig {
     @Bean
     public Binding binding() {
         return BindingBuilder.bind(auditQueue()).to(loanExchange()).with(ROUTING_KEY);
+    }
+
+    // 放款队列
+    @Bean
+    public Queue fundingQueue() {
+        return new Queue(FUNDING_QUEUE, true);
+    }
+
+    // 放款队列绑定
+    @Bean
+    public Binding fundingBinding() {
+        return BindingBuilder.bind(fundingQueue()).to(loanExchange()).with(FUNDING_ROUTING_KEY);
     }
 
     @Bean

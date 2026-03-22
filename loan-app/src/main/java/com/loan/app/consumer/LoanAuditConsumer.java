@@ -8,8 +8,11 @@ import com.loan.domain.user.repository.UserLimitRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Component
@@ -18,6 +21,7 @@ public class LoanAuditConsumer {
 
     private final LoanOrderRepository orderRepository;
     private final UserLimitRepository userLimitRepository;
+    private final RabbitTemplate rabbitTemplate;
 
     @RabbitListener(queues = RabbitConfig.QUEUE)
     @Transactional
@@ -39,9 +43,7 @@ public class LoanAuditConsumer {
             int rows = userLimitRepository.decreaseLimit(event.getUserId(), event.getAmount());
             if (rows <= 0) {
                 log.error("【资产异常】订单 {} 额度扣减失败，可用额度不足！", event.getOrderNo());
-                // 额度不足，更新订单为拒绝状态
                 orderRepository.updateStatusByOrderNo(event.getOrderNo(), OrderStatus.INIT, OrderStatus.REJECTED);
-                // 回滚 Redis 预扣额度
                 userLimitRepository.restoreLimit(event.getUserId(), event.getAmount());
                 return;
             }
@@ -49,8 +51,17 @@ public class LoanAuditConsumer {
             // 4. 更新订单状态为 APPROVED
             orderRepository.updateStatusByOrderNo(event.getOrderNo(), OrderStatus.INIT, OrderStatus.APPROVED);
             log.info("【资产安全】订单 {} 额度实扣成功，状态已更新为 APPROVED", event.getOrderNo());
+
+            // 5. 发送放款消息（事务提交后）
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    log.info("审批事务提交，发送放款指令: {}", event.getOrderNo());
+                    rabbitTemplate.convertAndSend(RabbitConfig.FUNDING_EXCHANGE, RabbitConfig.FUNDING_ROUTING_KEY, event);
+                }
+            });
         } else {
-            // 5. 审批拒绝，回滚 Redis 预扣额度
+            // 6. 审批拒绝，回滚 Redis 预扣额度
             log.info("【风控系统】订单 {} 审批拒绝，回滚 Redis 额度", event.getOrderNo());
             userLimitRepository.restoreLimit(event.getUserId(), event.getAmount());
             orderRepository.updateStatusByOrderNo(event.getOrderNo(), OrderStatus.INIT, OrderStatus.REJECTED);
