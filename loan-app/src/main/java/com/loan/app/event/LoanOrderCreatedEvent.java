@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.math.BigDecimal;
 
 @Data
 @AllArgsConstructor
@@ -12,5 +13,5 @@ import java.io.Serializable;
 public class LoanOrderCreatedEvent implements Serializable {
     private String orderNo;
     private Long userId;
-    private Double amount;
+    private BigDecimal amount;
 }

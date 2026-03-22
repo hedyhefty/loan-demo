@@ -6,6 +6,8 @@ import com.loan.infra.user.mapper.UserLimitMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
+
 @Repository
 @RequiredArgsConstructor
 public class UserLimitRepositoryImpl implements UserLimitRepository {
@@ -14,12 +16,12 @@ public class UserLimitRepositoryImpl implements UserLimitRepository {
     private final RedisLimitManager redisLimitManager;
 
     @Override
-    public int decreaseLimit(Long userId, Double amount) {
+    public int decreaseLimit(Long userId, BigDecimal amount) {
         return userLimitMapper.secureDecreaseLimit(userId, amount);
     }
 
     @Override
-    public void restoreLimit(Long userId, Double amount) {
+    public void restoreLimit(Long userId, BigDecimal amount) {
         redisLimitManager.releaseLimit(userId, amount);
     }
 }

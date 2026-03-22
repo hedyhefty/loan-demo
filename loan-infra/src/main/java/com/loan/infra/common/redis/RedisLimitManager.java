@@ -6,6 +6,8 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.scripting.support.ResourceScriptSource;
 import org.springframework.stereotype.Component;
 import jakarta.annotation.PostConstruct;
+
+import java.math.BigDecimal;
 import java.util.Collections;
 
 @Component
@@ -30,23 +32,23 @@ public class RedisLimitManager {
         releaseScript.setScriptSource(new ResourceScriptSource(new ClassPathResource("scripts/limit_release.lua")));
     }
 
-    public boolean tryAcquireLimit(Long userId, double amount, double maxLimit) {
+    public boolean tryAcquireLimit(Long userId, BigDecimal amount, BigDecimal maxLimit) {
         String key = "loan:limit:user:" + userId;
         Long result = redisTemplate.execute(
                 limitScript,
                 Collections.singletonList(key),
-                String.valueOf(amount),
-                String.valueOf(maxLimit)
+                amount.toPlainString(),
+                maxLimit.toPlainString()
         );
         return result != null && result == 1;
     }
 
-    public void releaseLimit(Long userId, double amount) {
+    public void releaseLimit(Long userId, BigDecimal amount) {
         String key = "loan:limit:user:" + userId;
         redisTemplate.execute(
                 releaseScript,
                 Collections.singletonList(key),
-                String.valueOf(amount)
+                amount.toPlainString()
         );
     }
 }

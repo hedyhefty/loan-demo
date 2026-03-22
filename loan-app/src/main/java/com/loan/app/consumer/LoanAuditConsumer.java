@@ -14,6 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.math.BigDecimal;
+
 @Slf4j
 @Component
 @RequiredArgsConstructor
@@ -22,6 +24,8 @@ public class LoanAuditConsumer {
     private final LoanOrderRepository orderRepository;
     private final UserLimitRepository userLimitRepository;
     private final RabbitTemplate rabbitTemplate;
+
+    private static final BigDecimal APPROVAL_THRESHOLD = BigDecimal.valueOf(3000);
 
     @RabbitListener(queues = RabbitConfig.QUEUE)
     @Transactional
@@ -36,7 +40,7 @@ public class LoanAuditConsumer {
         }
 
         // 2. 决策逻辑
-        boolean approved = event.getAmount() <= 3000;
+        boolean approved = event.getAmount().compareTo(APPROVAL_THRESHOLD) <= 0;
 
         if (approved) {
             // 3. 实扣数据库额度

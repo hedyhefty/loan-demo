@@ -6,6 +6,8 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Update;
 
+import java.math.BigDecimal;
+
 @Mapper
 public interface UserLimitMapper extends BaseMapper<UserLimitPO> {
 
@@ -14,5 +16,5 @@ public interface UserLimitMapper extends BaseMapper<UserLimitPO> {
             "available_limit = available_limit - #{amount}, " +
             "update_time = NOW() " +
             "WHERE user_id = #{userId} AND available_limit >= #{amount}")
-    int secureDecreaseLimit(@Param("userId") Long userId, @Param("amount") Double amount);
+    int secureDecreaseLimit(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
 }

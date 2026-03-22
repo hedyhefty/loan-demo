@@ -1,20 +1,26 @@
 package com.loan.app.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.loan.app.config.RabbitConfig;
 import com.loan.app.dto.LoanApplyDTO;
 import com.loan.app.event.LoanOrderCreatedEvent;
 import com.loan.app.exception.BizException;
+import com.loan.app.outbox.OutboxScheduler;
 import com.loan.domain.order.entity.LoanOrder;
 import com.loan.domain.order.repository.LoanOrderRepository;
+import com.loan.domain.outbox.entity.OutboxMessage;
+import com.loan.domain.outbox.repository.OutboxRepository;
 import com.loan.infra.common.redis.RedisLimitManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
+
+import java.math.BigDecimal;
 
 @Slf4j
 @Service
@@ -23,18 +29,22 @@ public class LoanApplicationService {
 
     private final LoanOrderRepository orderRepository;
     private final RedisLimitManager redisLimitManager;
-    private final RabbitTemplate rabbitTemplate;
+    private final OutboxRepository outboxRepository;
+    private final OutboxScheduler outboxScheduler;
+    private final ObjectMapper objectMapper;
 
-    private static final double DEFAULT_MAX_LIMIT = 5000.0;
+    private static final BigDecimal DEFAULT_MAX_LIMIT = BigDecimal.valueOf(5000);
 
     @Transactional(rollbackFor = Exception.class)
     public String applyLoan(LoanApplyDTO dto) {
         log.info("收到借款申请: 用户={}, 金额={}, 单号={}", dto.getUserId(), dto.getAmount(), dto.getOrderNo());
 
+        BigDecimal amount = BigDecimal.valueOf(dto.getAmount());
+
         // 1. Redis Lua 预控（防止高并发超支）
         boolean acquired = redisLimitManager.tryAcquireLimit(
                 dto.getUserId(),
-                dto.getAmount(),
+                amount,
                 DEFAULT_MAX_LIMIT
         );
 
@@ -58,15 +68,32 @@ public class LoanApplicationService {
             LoanOrderCreatedEvent event = new LoanOrderCreatedEvent(
                     order.getOrderNo(),
                     dto.getUserId(),
-                    dto.getAmount()
+                    BigDecimal.valueOf(dto.getAmount())
             );
 
-            // 5. 事务提交成功后发送 MQ 消息
+            // 5. 将消息存入本地消息表（与订单在同一事务）
+            OutboxMessage outboxMessage = OutboxMessage.builder()
+                    .messageId(order.getOrderNo())
+                    .payload(toJson(event))
+                    .routeKey(RabbitConfig.ROUTING_KEY)
+                    .status(OutboxMessage.STATUS_PENDING)
+                    .build();
+            outboxRepository.save(outboxMessage);
+
+            // 6. 事务提交后：快速通道尝试立即发送MQ（失败由调度器补偿）
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    log.info("数据库事务提交成功，准备发送 MQ 消息, 订单号: {}", order.getOrderNo());
-                    rabbitTemplate.convertAndSend(RabbitConfig.EXCHANGE, RabbitConfig.ROUTING_KEY, event);
+                    outboxScheduler.trySendImmediately(outboxMessage);
+                }
+
+                @Override
+                public void afterCompletion(int status) {
+                    // 只有事务确定回滚时才释放Redis额度，避免快速通道还在发MQ时误释放
+                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                        log.info("事务已回滚，准备释放 Redis 额度: userId={}", dto.getUserId());
+                        redisLimitManager.releaseLimit(dto.getUserId(), amount);
+                    }
                 }
             });
 
@@ -79,10 +106,17 @@ public class LoanApplicationService {
             return dto.getOrderNo();
 
         } catch (Exception e) {
-            // 异常补偿：释放 Redis 额度
-            log.error("系统异常导致订单写入失败，执行 Redis 额度释放: {}", dto.getOrderNo());
-            redisLimitManager.releaseLimit(dto.getUserId(), dto.getAmount());
+            // 这里不再手动释放额度，而是依赖 afterCompletion 的精确释放
+            log.error("系统异常导致订单写入失败: orderNo={}", dto.getOrderNo(), e);
             throw new BizException(500, "系统繁忙，请稍后再试");
+        }
+    }
+
+    private String toJson(LoanOrderCreatedEvent event) {
+        try {
+            return objectMapper.writeValueAsString(event);
+        } catch (JsonProcessingException e) {
+            throw new BizException(500, "消息序列化失败");
         }
     }
 }
