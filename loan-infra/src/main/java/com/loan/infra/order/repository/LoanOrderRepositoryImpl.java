@@ -43,11 +43,14 @@ public class LoanOrderRepositoryImpl implements LoanOrderRepository {
 
     @Override
     public int updateStatusByOrderNo(String orderNo, OrderStatus fromStatus, OrderStatus toStatus) {
+        // WHERE条件：订单号 + 当前状态 + 版本号（乐观锁）
+        // SET：目标状态 + version = version + 1（数据库原子操作）
+        // 只有版本号未被其他事务修改时才能更新成功
         LambdaUpdateWrapper<LoanOrderPO> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.eq(LoanOrderPO::getOrderNo, orderNo)
                 .eq(LoanOrderPO::getStatus, fromStatus.name())
                 .set(LoanOrderPO::getStatus, toStatus.name())
-                .set(LoanOrderPO::getVersion, 1); // 简单处理，生产环境应使用 version + 1
+                .setSql("version = version + 1");  // 数据库原子 +1
 
         return orderMapper.update(null, updateWrapper);
     }
