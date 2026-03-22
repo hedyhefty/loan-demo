@@ -77,6 +77,18 @@ public class RedisLimitManager {
     }
 
     /**
+     * 强制从 MySQL 同步额度到 Redis（用于 MySQL 实扣后保持两端一致）
+     */
+    public void syncFromDb(Long userId) {
+        String key = LIMIT_KEY_PREFIX + userId;
+        BigDecimal availableLimit = userLimitRepository.getAvailableLimit(userId);
+        if (availableLimit == null) {
+            availableLimit = BigDecimal.ZERO;
+        }
+        redisTemplate.opsForValue().set(key, availableLimit.toPlainString(), CACHE_EXPIRE);
+    }
+
+    /**
      * 从数据库加载用户额度到Redis（懒加载）
      * 使用双重检查锁定防止并发加载
      */

@@ -7,6 +7,7 @@ import com.loan.app.dto.LoanApplyDTO;
 import com.loan.app.event.LoanOrderCreatedEvent;
 import com.loan.app.exception.BizException;
 import com.loan.app.outbox.OutboxScheduler;
+import com.loan.infra.common.aop.Idempotent;
 import com.loan.domain.order.entity.LoanOrder;
 import com.loan.domain.order.repository.LoanOrderRepository;
 import com.loan.domain.outbox.entity.OutboxMessage;
@@ -36,6 +37,7 @@ public class LoanApplicationService {
     private final Tracer tracer;
 
     @Transactional(rollbackFor = Exception.class)
+    @Idempotent(key = "#dto.orderNo", prefix = "idempotent:apply:", expire = 300)
     public String applyLoan(LoanApplyDTO dto) {
         // 获取当前 traceId 用于全链路追踪
         String traceId = tracer.currentSpan().context().traceId();
@@ -60,6 +62,23 @@ public class LoanApplicationService {
                     dto.getOrderNo()
             );
 
+            // 注册事务同步回调（在 save 之前注册，确保所有分支都能触发）
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    // nothing
+                }
+
+                @Override
+                public void afterCompletion(int status) {
+                    // 只有事务回滚时才释放 Redis 额度（正常提交不释放）
+                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
+                        log.info("事务回滚，释放 Redis 额度: userId={}", dto.getUserId());
+                        redisLimitManager.releaseLimit(dto.getUserId(), amount);
+                    }
+                }
+            });
+
             // 3. 持久化到 MySQL（幂等：依靠 order_no UNIQUE KEY）
             orderRepository.save(order);
 
@@ -78,33 +97,23 @@ public class LoanApplicationService {
                     .status(OutboxMessage.STATUS_PENDING)
                     .traceId(traceId)
                     .build();
-            outboxRepository.save(outboxMessage);
 
             // 6. 事务提交后：快速通道尝试立即发送MQ（失败由调度器补偿）
+            // 注意：afterCommit 在事务成功提交后执行，此时 afterCompletion 已注册不会执行
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
                     outboxScheduler.trySendImmediately(outboxMessage);
                 }
-
-                @Override
-                public void afterCompletion(int status) {
-                    // 只有事务确定回滚时才释放Redis额度，避免快速通道还在发MQ时误释放
-                    if (status == TransactionSynchronization.STATUS_ROLLED_BACK) {
-                        log.info("事务已回滚，准备释放 Redis 额度: userId={}", dto.getUserId());
-                        redisLimitManager.releaseLimit(dto.getUserId(), amount);
-                    }
-                }
             });
+            outboxRepository.save(outboxMessage);
 
             log.info("借款订单创建成功: {}", dto.getOrderNo());
             return dto.getOrderNo();
 
         } catch (DuplicateKeyException e) {
             // 幂等处理：重复请求直接返回
-            log.warn("检测到重复提交订单，触发幂等返回: {}", dto.getOrderNo());
-            return dto.getOrderNo();
-
+            throw new BizException(500, "订单重复");
         } catch (Exception e) {
             // 这里不再手动释放额度，而是依赖 afterCompletion 的精确释放
             log.error("系统异常导致订单写入失败: orderNo={}", dto.getOrderNo(), e);

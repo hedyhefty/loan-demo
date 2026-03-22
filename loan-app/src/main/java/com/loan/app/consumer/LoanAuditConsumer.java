@@ -64,11 +64,12 @@ public class LoanAuditConsumer {
             orderRepository.updateStatusByOrderNo(event.getOrderNo(), OrderStatus.INIT, OrderStatus.APPROVED);
             log.info("【资产安全】订单 {} MySQL额度实扣成功，状态已更新为 APPROVED", event.getOrderNo());
 
-            // 5. 发送放款消息（事务提交后）
+            // 5. MySQL实扣成功后，同步 Redis 缓存与 MySQL 保持一致（而非释放）
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCommit() {
-                    log.info("审批事务提交，发送放款指令: {}", event.getOrderNo());
+                    redisLimitManager.syncFromDb(event.getUserId());
+                    log.info("【资产安全】Redis 额度已同步 MySQL: userId={}", event.getUserId());
                     rabbitTemplate.convertAndSend(RabbitConfig.FUNDING_EXCHANGE, RabbitConfig.FUNDING_ROUTING_KEY, event);
                 }
             });

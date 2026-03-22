@@ -28,6 +28,8 @@ public class OutboxRepositoryImpl implements OutboxRepository {
         po.setTraceId(message.getTraceId());
         po.setRetryCount(0);
         outboxMapper.insert(po);
+        // 回填 MyBatis Plus 生成的自增 ID 到实体，确保后续 updateStatus 能正确工作
+        message.setId(po.getId());
     }
 
     @Override
