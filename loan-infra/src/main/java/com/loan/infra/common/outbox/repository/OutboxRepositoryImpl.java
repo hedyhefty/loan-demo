@@ -25,6 +25,7 @@ public class OutboxRepositoryImpl implements OutboxRepository {
         po.setPayload(message.getPayload());
         po.setRouteKey(message.getRouteKey());
         po.setStatus(message.getStatus());
+        po.setTraceId(message.getTraceId());
         po.setRetryCount(0);
         outboxMapper.insert(po);
     }

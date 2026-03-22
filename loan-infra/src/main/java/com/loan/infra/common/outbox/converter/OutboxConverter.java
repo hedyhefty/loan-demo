@@ -15,6 +15,7 @@ public interface OutboxConverter {
     @Mapping(target = "payload", source = "payload")
     @Mapping(target = "routeKey", source = "routeKey")
     @Mapping(target = "status", source = "status")
+    @Mapping(target = "traceId", source = "traceId")
     @Mapping(target = "createTime", source = "createTime")
     @Mapping(target = "updateTime", source = "updateTime")
     @Mapping(target = "retryCount", source = "retryCount")

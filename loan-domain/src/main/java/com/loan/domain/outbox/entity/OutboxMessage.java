@@ -17,6 +17,7 @@ public class OutboxMessage {
     private String payload;
     private String routeKey;
     private String status;
+    private String traceId;  // 全链路追踪ID
     private LocalDateTime createTime;
     private LocalDateTime updateTime;
     private Integer retryCount;

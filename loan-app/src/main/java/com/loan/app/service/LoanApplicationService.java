@@ -12,6 +12,7 @@ import com.loan.domain.order.repository.LoanOrderRepository;
 import com.loan.domain.outbox.entity.OutboxMessage;
 import com.loan.domain.outbox.repository.OutboxRepository;
 import com.loan.infra.common.redis.RedisLimitManager;
+import io.micrometer.tracing.Tracer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DuplicateKeyException;
@@ -32,10 +33,14 @@ public class LoanApplicationService {
     private final OutboxRepository outboxRepository;
     private final OutboxScheduler outboxScheduler;
     private final ObjectMapper objectMapper;
+    private final Tracer tracer;
 
     @Transactional(rollbackFor = Exception.class)
     public String applyLoan(LoanApplyDTO dto) {
-        log.info("收到借款申请: 用户={}, 金额={}, 单号={}", dto.getUserId(), dto.getAmount(), dto.getOrderNo());
+        // 获取当前 traceId 用于全链路追踪
+        String traceId = tracer.currentSpan().context().traceId();
+        log.info("收到借款申请: 用户={}, 金额={}, 单号={}, traceId={}",
+                dto.getUserId(), dto.getAmount(), dto.getOrderNo(), traceId);
 
         BigDecimal amount = BigDecimal.valueOf(dto.getAmount());
 
@@ -65,12 +70,13 @@ public class LoanApplicationService {
                     BigDecimal.valueOf(dto.getAmount())
             );
 
-            // 5. 将消息存入本地消息表（与订单在同一事务）
+            // 5. 将消息存入本地消息表（与订单在同一事务），同时保存 traceId
             OutboxMessage outboxMessage = OutboxMessage.builder()
                     .messageId(order.getOrderNo())
                     .payload(toJson(event))
                     .routeKey(RabbitConfig.ROUTING_KEY)
                     .status(OutboxMessage.STATUS_PENDING)
+                    .traceId(traceId)
                     .build();
             outboxRepository.save(outboxMessage);
 

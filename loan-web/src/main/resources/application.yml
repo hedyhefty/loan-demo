@@ -21,12 +21,15 @@ spring:
     port: ${RABBITMQ_PORT}
     username: ${RABBITMQ_USERNAME}
     password: ${RABBITMQ_PASSWORD}
+    template:
+      observation-enabled: true
     listener:
       simple:
         retry:
           enabled: true
           max-attempts: 3
           initial-interval: 2000ms
+        observation-enabled: true
 
 management:
   endpoints:
@@ -36,9 +39,20 @@ management:
   tracing:
     sampling:
       probability: 1.0
+    # W3C 传播模式，让 traceId 通过 MQ header 传递
+    propagation:
+      type: W3C
   zipkin:
     tracing:
-      endpoint: ${ZIPKIN_ENDPOINT}
+      endpoint: ${ZIPKIN_ENDPOINT:http://localhost:9411/api/v2/spans}
+
+# 日志配置：显示 traceId 和 spanId
+logging:
+  level:
+    root: INFO
+    com.loan: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %5p [%X{traceId:-NONE-},%X{spanId:-NONE-}] [${spring.application.name}] %m%n"
 
 mybatis-plus:
   configuration:
