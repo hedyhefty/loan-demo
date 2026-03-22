@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 import java.time.LocalDateTime;
 
 @Configuration
-@MapperScan("com.loan.infra.order.mapper")
+@MapperScan({"com.loan.infra.order.mapper", "com.loan.infra.user.mapper"})
 public class MybatisPlusConfig implements MetaObjectHandler {
 
     @Bean
