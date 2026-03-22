@@ -22,6 +22,7 @@ public class LoanOrder {
 
     // 审计字段
     private LocalDateTime createTime;
+    private LocalDateTime updateTime;
     private Long version;       // 乐观锁版本号，防止并发写冲突
 
     /**

@@ -12,6 +12,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Repository
 @RequiredArgsConstructor
@@ -63,5 +64,18 @@ public class LoanOrderRepositoryImpl implements LoanOrderRepository {
         }
 
         return orderConverter.toDomain(po);
+    }
+
+    @Override
+    public List<LoanOrder> findStuckOrders(List<OrderStatus> statuses, LocalDateTime threshold, int limit) {
+        List<String> statusNames = statuses.stream().map(Enum::name).toList();
+        LambdaQueryWrapper<LoanOrderPO> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.in(LoanOrderPO::getStatus, statusNames)
+                .lt(LoanOrderPO::getUpdateTime, threshold)
+                .orderByAsc(LoanOrderPO::getUpdateTime)
+                .last("LIMIT " + limit);
+
+        List<LoanOrderPO> pos = orderMapper.selectList(queryWrapper);
+        return pos.stream().map(orderConverter::toDomain).toList();
     }
 }
