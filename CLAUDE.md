@@ -60,3 +60,20 @@ LoanApplicationService.applyLoan()
 - RabbitMQ - message-driven state transitions
 - Zipkin - distributed tracing (OpenTelemetry)
 - Lombok + MapStruct
+- Resilience4j - circuit breaker
+- Prometheus + Grafana - monitoring
+
+## 安全规范
+
+**严禁在 Git 跟踪的文件中写入明文账号密码**，包括但不限于：
+- 配置文件（`.yml`、`.properties`、`.xml`）
+- 代码注释
+- SQL 文件
+- README 等文档
+
+**正确做法**：使用环境变量占位符 `${ENV_VAR}`，敏感信息通过以下方式管理：
+- `.env` 文件（已加入 `.gitignore`）
+- CI/CD  Secrets
+- 容器编排的 Secret 对象
+
+**不暴露本地部署的域名和端口号**。仅描述组件名称和容器名称（如 MySQL、Redis），不写具体连接地址。
