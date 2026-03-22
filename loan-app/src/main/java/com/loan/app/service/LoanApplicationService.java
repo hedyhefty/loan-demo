@@ -33,20 +33,14 @@ public class LoanApplicationService {
     private final OutboxScheduler outboxScheduler;
     private final ObjectMapper objectMapper;
 
-    private static final BigDecimal DEFAULT_MAX_LIMIT = BigDecimal.valueOf(5000);
-
     @Transactional(rollbackFor = Exception.class)
     public String applyLoan(LoanApplyDTO dto) {
         log.info("收到借款申请: 用户={}, 金额={}, 单号={}", dto.getUserId(), dto.getAmount(), dto.getOrderNo());
 
         BigDecimal amount = BigDecimal.valueOf(dto.getAmount());
 
-        // 1. Redis Lua 预控（防止高并发超支）
-        boolean acquired = redisLimitManager.tryAcquireLimit(
-                dto.getUserId(),
-                amount,
-                DEFAULT_MAX_LIMIT
-        );
+        // 1. Redis Lua 预控（内部自动从DB懒加载用户额度）
+        boolean acquired = redisLimitManager.tryAcquireLimit(dto.getUserId(), amount);
 
         if (!acquired) {
             log.warn("用户额度不足: userId={}", dto.getUserId());

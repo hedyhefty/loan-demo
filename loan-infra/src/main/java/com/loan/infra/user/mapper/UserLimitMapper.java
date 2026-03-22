@@ -17,4 +17,11 @@ public interface UserLimitMapper extends BaseMapper<UserLimitPO> {
             "update_time = NOW() " +
             "WHERE user_id = #{userId} AND available_limit >= #{amount}")
     int secureDecreaseLimit(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
+
+    @Update("UPDATE t_user_limit SET " +
+            "available_limit = available_limit + #{amount}, " +
+            "used_limit = used_limit - #{amount}, " +
+            "update_time = NOW() " +
+            "WHERE user_id = #{userId} AND used_limit >= #{amount}")
+    int restoreLimit(@Param("userId") Long userId, @Param("amount") BigDecimal amount);
 }

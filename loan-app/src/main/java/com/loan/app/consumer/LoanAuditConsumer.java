@@ -5,6 +5,7 @@ import com.loan.app.event.LoanOrderCreatedEvent;
 import com.loan.domain.order.enums.OrderStatus;
 import com.loan.domain.order.repository.LoanOrderRepository;
 import com.loan.domain.user.repository.UserLimitRepository;
+import com.loan.infra.common.redis.RedisLimitManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
@@ -23,6 +24,7 @@ public class LoanAuditConsumer {
 
     private final LoanOrderRepository orderRepository;
     private final UserLimitRepository userLimitRepository;
+    private final RedisLimitManager redisLimitManager;
     private final RabbitTemplate rabbitTemplate;
 
     private static final BigDecimal APPROVAL_THRESHOLD = BigDecimal.valueOf(3000);
@@ -43,18 +45,24 @@ public class LoanAuditConsumer {
         boolean approved = event.getAmount().compareTo(APPROVAL_THRESHOLD) <= 0;
 
         if (approved) {
-            // 3. 实扣数据库额度
+            // 3. 实扣 MySQL 数据库额度
             int rows = userLimitRepository.decreaseLimit(event.getUserId(), event.getAmount());
             if (rows <= 0) {
-                log.error("【资产异常】订单 {} 额度扣减失败，可用额度不足！", event.getOrderNo());
+                log.error("【资产异常】订单 {} MySQL额度扣减失败，可用额度不足！", event.getOrderNo());
                 orderRepository.updateStatusByOrderNo(event.getOrderNo(), OrderStatus.INIT, OrderStatus.REJECTED);
-                userLimitRepository.restoreLimit(event.getUserId(), event.getAmount());
+                // 事务提交后释放 Redis 预扣额度
+                TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                    @Override
+                    public void afterCommit() {
+                        redisLimitManager.releaseLimit(event.getUserId(), event.getAmount());
+                    }
+                });
                 return;
             }
 
             // 4. 更新订单状态为 APPROVED
             orderRepository.updateStatusByOrderNo(event.getOrderNo(), OrderStatus.INIT, OrderStatus.APPROVED);
-            log.info("【资产安全】订单 {} 额度实扣成功，状态已更新为 APPROVED", event.getOrderNo());
+            log.info("【资产安全】订单 {} MySQL额度实扣成功，状态已更新为 APPROVED", event.getOrderNo());
 
             // 5. 发送放款消息（事务提交后）
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -65,11 +73,16 @@ public class LoanAuditConsumer {
                 }
             });
         } else {
-            // 6. 审批拒绝，回滚 Redis 预扣额度
-            log.info("【风控系统】订单 {} 审批拒绝，回滚 Redis 额度", event.getOrderNo());
-            userLimitRepository.restoreLimit(event.getUserId(), event.getAmount());
+            // 6. 审批拒绝，事务提交后释放 Redis 预扣额度
+            log.info("【风控系统】订单 {} 审批拒绝，准备释放 Redis 预扣额度", event.getOrderNo());
             orderRepository.updateStatusByOrderNo(event.getOrderNo(), OrderStatus.INIT, OrderStatus.REJECTED);
-            log.info("【风控系统】订单 {} 状态已更新为 REJECTED", event.getOrderNo());
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    redisLimitManager.releaseLimit(event.getUserId(), event.getAmount());
+                    log.info("【风控系统】订单 {} Redis 预扣额度已释放", event.getOrderNo());
+                }
+            });
         }
     }
 }

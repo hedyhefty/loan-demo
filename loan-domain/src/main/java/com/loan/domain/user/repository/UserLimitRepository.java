@@ -4,6 +4,13 @@ import java.math.BigDecimal;
 
 public interface UserLimitRepository {
     /**
+     * 查询用户可用额度
+     * @param userId 用户ID
+     * @return 可用额度，如果用户不存在返回null
+     */
+    BigDecimal getAvailableLimit(Long userId);
+
+    /**
      * 原子扣减用户额度
      * @param userId 用户ID
      * @param amount 扣减金额
